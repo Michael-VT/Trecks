@@ -1190,6 +1190,21 @@ document.addEventListener("keydown", e => {
     } else {
         for (const t of index) {
             await ensureLoaded(t.id);
+
+            // анонс демо-треков считаем на клиенте
+            const pts = pointsCache.get(t.id) || [];
+            const m = t.file.match(DATE_PREFIX_RE);
+
+            Object.assign(t, summarizePoints(pts), {
+                type: detectTypeByName(t.file),
+                title: t.title.replace(/^\d{8}/, "").trim(),
+                date: m
+                    ? `${m[1]}-${m[2]}-${m[3]}`
+                    : pts.find(p => p.time)?.time.slice(0, 10) || null,
+                hasHr: pts.some(p => p.hr),
+                points: pts.length,
+            });
+
             selected.add(t.id);
         }
         redraw();
