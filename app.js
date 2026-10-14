@@ -127,7 +127,10 @@ async function loadFile(url) {
         return [];
     }
 
-    const text = await response.text();
+    return parseFile(await response.text(), url);
+}
+
+function parseFile(text, name) {
 
     const xml = new DOMParser().parseFromString(text, "text/xml");
 
@@ -135,7 +138,7 @@ async function loadFile(url) {
 
     // ---------------- GPX ----------------
 
-    if (url.toLowerCase().endsWith(".gpx")) {
+    if (name.toLowerCase().endsWith(".gpx")) {
 
         xml.querySelectorAll("trkpt").forEach(pt => {
 
@@ -169,7 +172,7 @@ async function loadFile(url) {
 
     // ---------------- TCX ----------------
 
-    else if (url.toLowerCase().endsWith(".tcx")) {
+    else if (name.toLowerCase().endsWith(".tcx")) {
 
         xml.querySelectorAll("Trackpoint").forEach(pt => {
 
@@ -208,7 +211,7 @@ async function loadFile(url) {
 
     // ---------------- KML ----------------
 
-    else if (url.toLowerCase().endsWith(".kml")) {
+    else if (name.toLowerCase().endsWith(".kml")) {
 
         xml.querySelectorAll("coordinates").forEach(c => {
 
@@ -877,7 +880,7 @@ async function ensureLoaded(id) {
 
     const entry = byId.get(id);
 
-    if (!entry) return;
+    if (!entry || !entry.file) return;  // локальные файлы уже в кэше
 
     const points = await loadFile(encodeURI(entry.file));
 
@@ -936,6 +939,153 @@ function redraw() {
 // ----------------------------
 // События
 // ----------------------------
+
+// ----------------------------
+// Загрузка треков с компьютера
+// ----------------------------
+
+const TRACK_RE = /\.(gpx|tcx|kml)$/i;
+const TYPE_WORDS = [["бег", "Бег"], ["велосипед", "Велосипед"], ["ходьба", "Ходьба"]];
+const DATE_PREFIX_RE = /^(\d{4})(\d{2})(\d{2})/;
+
+function detectTypeByName(name) {
+    const low = name.toLowerCase();
+    for (const [kw, label] of TYPE_WORDS) {
+        if (low.includes(kw)) return label;
+    }
+    return "Трек";
+}
+
+function summarizePoints(points) {
+
+    let duration = 0;
+    let maxSpeed = null;
+
+    const t1 = points.find(p => p.time)?.time;
+    const t2 = [...points].reverse().find(p => p.time)?.time;
+
+    if (t1 && t2) {
+        duration = (new Date(t2) - new Date(t1)) / 1000;
+    }
+
+    for (let i = 0; i + 10 < points.length; i += 5) {
+        const a = points[i];
+        const b = points[i + 10];
+        if (a.time && b.time) {
+            const dt = (new Date(b.time) - new Date(a.time)) / 1000;
+            if (dt > 0) {
+                const v = ((b.distance || 0) - (a.distance || 0)) / dt * 3.6;
+                if (v > (maxSpeed || 0)) maxSpeed = v;
+            }
+        }
+    }
+
+    // набор высоты: положительные перепады с гашением шума (2 м)
+    let climb = 0;
+
+    for (let i = 1; i < points.length; i++) {
+        const d = points[i].ele - points[i - 1].ele;
+        if (d > 2) climb += d;
+    }
+
+    const last = points[points.length - 1];
+    const distance = last?.distance || 0;
+
+    return {
+        distance: distance ? Math.round(distance) : null,
+        duration: duration ? Math.round(duration) : null,
+        avgSpeed: distance && duration ? distance / duration * 3.6 : null,
+        maxSpeed: maxSpeed ? Math.round(maxSpeed * 10) / 10 : null,
+        climb: climb ? Math.round(climb) : null,
+    };
+}
+
+async function addLocalFiles(fileList) {
+
+    const added = [];
+
+    for (const file of fileList) {
+
+        if (!TRACK_RE.test(file.name)) continue;
+
+        let points;
+
+        try {
+            points = parseFile(await file.text(), file.name);
+        } catch (e) {
+            console.error("Не удалось прочитать", file.name, e);
+            continue;
+        }
+
+        if (points.length < 2) continue;
+
+        points = prepareTrack(points);
+
+        let id = `local/${file.name}`;
+        let n = 2;
+        while (byId.has(id)) id = `local/${file.name} (${n++})`;
+
+        const m = file.name.match(DATE_PREFIX_RE);
+        const first = points.find(p => p.time);
+
+        const entry = {
+            id,
+            file: null,               // нет URL — точки уже в кэше
+            format: file.name.split(".").pop().toLowerCase(),
+            title: file.name.replace(TRACK_RE, ""),
+            type: detectTypeByName(file.name),
+            date: m
+                ? `${m[1]}-${m[2]}-${m[3]}`
+                : first ? first.time.slice(0, 10) : null,
+            hasHr: points.some(p => p.hr),
+            points: points.length,
+            ...summarizePoints(points),
+        };
+
+        pointsCache.set(id, points);
+        byId.set(id, entry);
+        index.unshift(entry);      // сверху списка
+        added.push(id);
+    }
+
+    if (!added.length) return;
+
+    renderChips();
+    renderList();
+
+    // добавить к текущему выбору — сразу сравнивать
+    for (const id of added) selected.add(id);
+
+    redraw();
+}
+
+const uploadBtn = document.getElementById("upload");
+const fileInput = document.getElementById("file-input");
+
+uploadBtn.onclick = () => fileInput.click();
+
+fileInput.addEventListener("change", () => {
+    addLocalFiles(fileInput.files);
+    fileInput.value = "";          // повторный выбор того же файла
+});
+
+// drag-and-drop на всё окно
+document.addEventListener("dragover", e => {
+    e.preventDefault();
+    document.getElementById("app").classList.add("droptarget");
+});
+
+document.addEventListener("dragleave", e => {
+    if (e.relatedTarget === null) {
+        document.getElementById("app").classList.remove("droptarget");
+    }
+});
+
+document.addEventListener("drop", e => {
+    e.preventDefault();
+    document.getElementById("app").classList.remove("droptarget");
+    if (e.dataTransfer?.files?.length) addLocalFiles(e.dataTransfer.files);
+});
 
 listEl.addEventListener("click", e => {
 

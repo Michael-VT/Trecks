@@ -113,6 +113,13 @@
             padding:4px 10px; font-size:13px; cursor:pointer;
         }
         #pl-info { color:#555; white-space:nowrap; }
+        #upload-row { padding:8px 10px 0 10px; }
+        #upload {
+            width:100%; border:1px dashed #2b5f9e; background:#f3f7fd;
+            color:#2b5f9e; border-radius:6px; padding:6px; font-size:12px;
+            cursor:pointer;
+        }
+        #app.droptarget #upload { background:#dbe7f7; }
     </style>
 </head>
 <body>
@@ -122,6 +129,10 @@
                 <b>Trecks <span id="ver"></span></b>
                 <input id="search" type="search" placeholder="Поиск…">
                 <button id="close-sidebar" title="Скрыть панель">✕</button>
+            </div>
+            <div id="upload-row">
+                <button id="upload" title="GPX / TCX / KML — можно перетащить файлы на карту">＋ Файл с компьютера</button>
+                <input id="file-input" type="file" accept=".gpx,.tcx,.kml" multiple hidden>
             </div>
             <div id="chips"></div>
             <div id="tracklist"></div>
