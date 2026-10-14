@@ -99,6 +99,9 @@
         #stats table { border-collapse:collapse; }
         #stats td { border:1px solid #ccc; padding:3px 6px; }
         #ver { font-size:11px; color:#999; font-weight:normal; }
+        #weight-row { display:flex; align-items:center; gap:8px;
+                       font-size:12px; color:#555; margin-bottom:8px; }
+        #weight { flex:1; }
     </style>
 </head>
 <body>
@@ -112,6 +115,10 @@
             <div id="chips"></div>
             <div id="tracklist"></div>
             <div id="sidebar-foot">
+            <div id="weight-row">
+                <span id="weight-label">Толщина линии: 6</span>
+                <input id="weight" type="range" min="2" max="32" step="1" value="6">
+            </div>
                 <div id="modes"></div>
                 <div id="selection-info"></div>
                 <button id="clear">Очистить выбор</button>

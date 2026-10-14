@@ -15,11 +15,14 @@ const pointsCache = new Map(); // id -> точки
 let tracks = [];             // выбранные: [{ id, title, points }]
 
 let currentMode = "speed";
+let lineWeight = 6;          // толщина линии трека (2..32)
 let polylines = [];
 let pointMarkers = [];
 let statsVisible = false;
 let typeFilter = "Все";
 let query = "";
+let elevationFix = false;    // поправка высоты: минимум выбранного -> 0
+let elevationOffset = 0;
 
 // ----------------------------
 // UI-элементы
@@ -292,6 +295,19 @@ function drawTracks(mode) {
         }
     });
 
+    // поправка высоты: сдвиг выбранного набора так, чтобы минимум = 0
+    elevationOffset = 0;
+
+    if (mode === "height" && elevationFix && values.length) {
+        elevationOffset = Math.min(...values);
+        if (elevationOffset) {
+            for (let i = 0; i < values.length; i++) {
+                values[i] -= elevationOffset;
+            }
+        }
+    }
+
+
     const hasData = values.length > 1;
     const min = hasData ? Math.min(...values) : 0;
     const max = hasData ? Math.max(...values) : 1;
@@ -323,7 +339,7 @@ function drawTracks(mode) {
             let value = null;
 
             if (mode === "speed") value = p2.speed;
-            if (mode === "height") value = p2.ele;
+            if (mode === "height") value = p2.ele - elevationOffset;
             if (mode === "pulse") value = p2.hr;
 
             const noData = value === null || isNaN(value);
@@ -340,7 +356,7 @@ function drawTracks(mode) {
                 ],
                 {
                     color,
-                    weight: 6,
+                    weight: lineWeight,
                     opacity: 0.9
                 }
             ).addTo(map);
@@ -352,7 +368,7 @@ function drawTracks(mode) {
             const marker = L.circleMarker(
                 [p2.lat, p2.lon],
                 {
-                    radius: 4,
+                    radius: Math.max(4, lineWeight / 2),
                     opacity: 0,
                     fillOpacity: 0
                 }
@@ -372,7 +388,7 @@ function drawTracks(mode) {
                     tooltip.innerHTML = `
                         <b>${track.title}</b><br>
                         Speed: ${format(p2.speed)} km/h<br>
-                        Height: ${format(p2.ele)} m<br>
+                        Height: ${format(p2.ele - elevationOffset)} m<br>
                         Pulse: ${format(p2.hr)} bpm<br>
                         Distance: ${format((p2.distance || 0)/1000)} km<br>
                         Time: ${p2.time || "-"}<br>
@@ -471,6 +487,9 @@ function showStatistics() {
         ? totalDistance / totalDuration * 3.6
         : 0;
 
+    // поправка высоты: минимум выбранного набора становится 0
+    const eleShift = elevationFix && heights.length ? Math.min(...heights) : 0;
+
     statsPanel.innerHTML = `
         <h3>Route Statistics</h3>
 
@@ -497,13 +516,13 @@ function showStatistics() {
         </tr>
 
         <tr>
-            <td>Min Height</td>
-            <td>${format(heights.length ? Math.min(...heights) : null)} m</td>
+            <td>Min Height${elevationFix ? " (поправка)" : ""}</td>
+            <td>${format(heights.length ? Math.min(...heights) - eleShift : null)} m</td>
         </tr>
 
         <tr>
-            <td>Max Height</td>
-            <td>${format(heights.length ? Math.max(...heights) : null)} m</td>
+            <td>Max Height${elevationFix ? " (поправка)" : ""}</td>
+            <td>${format(heights.length ? Math.max(...heights) - eleShift : null)} m</td>
         </tr>
 
         <tr>
@@ -645,11 +664,42 @@ function renderModes() {
         modesEl.appendChild(btn);
     });
 
+    const fixBtn = document.createElement("button");
+    fixBtn.textContent = "Поправка высоты";
+    fixBtn.title = "Сместить высоты так, чтобы минимум выбранного = 0 (уровень моря)";
+    fixBtn.className = elevationFix ? "active" : "";
+    fixBtn.onclick = () => {
+        elevationFix = !elevationFix;
+        drawTracks(currentMode);
+        renderModes();
+        if (statsVisible) {
+            showStatistics();
+            statsVisible = true; // showStatistics переключает видимость
+        }
+    };
+    modesEl.appendChild(fixBtn);
+
     const statsBtn = document.createElement("button");
     statsBtn.textContent = "Статистика";
-    statsBtn.onclick = () => showStatistics();
+
     modesEl.appendChild(statsBtn);
 }
+
+const weightEl = document.getElementById("weight");
+const weightLabel = document.getElementById("weight-label");
+
+weightEl.addEventListener("input", () => {
+
+    lineWeight = Number(weightEl.value);
+
+    weightLabel.textContent = "Толщина линии: " + lineWeight;
+
+    // обновление стиля существующих слоёв — без пересоздания
+    polylines.forEach(p => p.setStyle({ weight: lineWeight }));
+    pointMarkers.forEach(m =>
+        m.setStyle({ radius: Math.max(4, lineWeight / 2) })
+    );
+});
 
 async function ensureLoaded(id) {
 
