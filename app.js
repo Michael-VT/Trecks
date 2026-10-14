@@ -4,9 +4,26 @@
 
 const map = L.map("map", { preferCanvas: true }).setView([39.36, -9.37], 12);
 
-L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-    attribution: "© OpenStreetMap"
-}).addTo(map);
+const baseLayers = {
+    "Карта": L.tileLayer(
+        "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+        { attribution: "© OpenStreetMap", maxZoom: 19 }),
+    "Спутник": L.tileLayer(
+        "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+        { attribution: "Esri, Maxar, Earthstar Geographics", maxZoom: 19 }),
+    "Рельеф": L.tileLayer(
+        "https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png",
+        { attribution: "© OpenTopoMap (CC-BY-SA)", maxZoom: 17 }),
+};
+
+const labelOverlay = L.tileLayer(
+    "https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}",
+    { attribution: "Esri", maxZoom: 19 });
+
+baseLayers["Карта"].addTo(map);
+
+L.control.layers(baseLayers, { "Названия (на спутник)": labelOverlay },
+                  { position: "bottomright" }).addTo(map);
 
 let index = [];              // каталог треков (анонсы)
 const byId = new Map();
@@ -393,7 +410,8 @@ function drawTracks(mode) {
                         Distance: ${format((p2.distance || 0)/1000)} km<br>
                         Time: ${p2.time || "-"}<br>
                         Lat: ${format(p2.lat, 5)}<br>
-                        Lon: ${format(p2.lon, 5)}
+                        Lon: ${format(p2.lon, 5)}<br>
+                        <i>клик по точке — панорама Google</i>
                     `;
 
                 }, 2000);
@@ -404,6 +422,13 @@ function drawTracks(mode) {
                 clearTimeout(timer);
 
                 tooltip.style.display = "none";
+            });
+
+            marker.on("click", () => {
+                window.open(
+                    `https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=${p2.lat},${p2.lon}`,
+                    "_blank"
+                );
             });
 
             pointMarkers.push(marker);
@@ -701,6 +726,151 @@ weightEl.addEventListener("input", () => {
     );
 });
 
+// ----------------------------
+// Проигрыватель маршрута
+// ----------------------------
+
+const SPEEDS = [1, 2, 4, 8, 16];
+
+const player = {
+    seq: [],       // точки выбранных треков по порядку
+    idx: 0,
+    playing: false,
+    speed: 1,
+    timer: null,
+    marker: null,
+};
+
+const playerEl = document.createElement("div");
+playerEl.id = "player";
+playerEl.innerHTML = `
+    <button id="pl-play" title="Идти по маршруту">▶</button>
+    <button id="pl-speed" title="Скорость">×1</button>
+    <button id="pl-stop" title="В начало">⏮</button>
+    <span id="pl-info"></span>
+`;
+map.getContainer().appendChild(playerEl);
+
+const plPlay = playerEl.querySelector("#pl-play");
+const plSpeed = playerEl.querySelector("#pl-speed");
+const plStop = playerEl.querySelector("#pl-stop");
+const plInfo = playerEl.querySelector("#pl-info");
+
+function playerInfo() {
+
+    const p = player.seq[Math.max(0, player.idx - 1)];
+
+    if (!p) {
+        plInfo.textContent = tracks.length
+            ? "▶ — идти по маршруту"
+            : "выберите трек";
+        return;
+    }
+
+    plInfo.textContent =
+        `${format(p.speed)} км/ч · ` +
+        `${format(p.ele - elevationOffset)} м · ` +
+        `${format((p.distance || 0) / 1000)} км`;
+}
+
+function playerPause() {
+
+    if (player.timer) {
+        clearInterval(player.timer);
+        player.timer = null;
+    }
+
+    player.playing = false;
+    plPlay.textContent = "▶";
+}
+
+function playerTick() {
+
+    const p = player.seq[player.idx];
+
+    if (!p) {
+        playerPause();
+        return;
+    }
+
+    if (!player.marker) {
+        player.marker = L.circleMarker([p.lat, p.lon], {
+            radius: 9,
+            color: "#fff",
+            weight: 3,
+            fillColor: "#2b5f9e",
+            fillOpacity: 1,
+        }).addTo(map);
+    } else {
+        player.marker.setLatLng([p.lat, p.lon]);
+    }
+
+    // камера следует за маркером
+    map.setView([p.lat, p.lon],
+                Math.max(map.getZoom(), 15),
+                { animate: false });
+
+    player.idx++;
+    playerInfo();
+
+    if (player.idx >= player.seq.length) {
+        playerPause();
+    }
+}
+
+function playerToggle() {
+
+    if (!player.seq.length) return;
+
+    if (player.playing) {
+        playerPause();
+        return;
+    }
+
+    if (player.idx >= player.seq.length) player.idx = 0;
+
+    player.playing = true;
+    plPlay.textContent = "⏸";
+
+    const ms = 25 / player.speed;   // 40 точек/сек при ×1
+
+    player.timer = setInterval(playerTick, ms);
+}
+
+function playerReset() {
+
+    playerPause();
+
+    player.idx = 0;
+    player.seq = [];
+
+    tracks.forEach(t => t.points.forEach(p => player.seq.push(p)));
+
+    if (player.marker) {
+        map.removeLayer(player.marker);
+        player.marker = null;
+    }
+
+    playerInfo();
+}
+
+plPlay.onclick = playerToggle;
+
+plSpeed.onclick = () => {
+
+    const i = SPEEDS.indexOf(player.speed);
+
+    player.speed = SPEEDS[(i + 1) % SPEEDS.length];
+    plSpeed.textContent = "×" + player.speed;
+
+    if (player.playing) {
+        clearInterval(player.timer);
+        player.timer = setInterval(playerTick, 25 / player.speed);
+    }
+};
+
+plStop.onclick = playerReset;
+
 async function ensureLoaded(id) {
 
     if (pointsCache.has(id)) return;
@@ -744,6 +914,7 @@ function redraw() {
         .filter(t => t.points && t.points.length > 1);
 
     drawTracks(currentMode);
+    playerReset();
 
     if (statsVisible) {
         showStatistics();
