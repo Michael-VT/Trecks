@@ -1207,6 +1207,7 @@ document.addEventListener("keydown", e => {
 
             selected.add(t.id);
         }
+        renderModes();   // hasHr стал известен после расчёта анонсов
         redraw();
     }
 })();
