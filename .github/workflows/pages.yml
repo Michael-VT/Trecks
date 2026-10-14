@@ -22,6 +22,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Cache-bust app.js
+        run: sed -i.bak 's|src="app.js"|src="app.js?v=${{ github.sha }}"|' index.html
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
