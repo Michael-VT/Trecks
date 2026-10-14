@@ -733,7 +733,7 @@ weightEl.addEventListener("input", () => {
 // Проигрыватель маршрута
 // ----------------------------
 
-const SPEEDS = [1, 2, 4, 8, 16];
+const SPEEDS = [1, 2, 4, 8, 16, 32, 64];
 
 const player = {
     seq: [],       // точки выбранных треков по порядку
@@ -813,7 +813,7 @@ function playerTick() {
                 Math.max(map.getZoom(), 15),
                 { animate: false });
 
-    player.idx++;
+    player.idx += player.speed;   // тик 25 мс: ×N точек за тик
     playerInfo();
 
     if (player.idx >= player.seq.length) {
@@ -835,9 +835,9 @@ function playerToggle() {
     player.playing = true;
     plPlay.textContent = "⏸";
 
-    const ms = 25 / player.speed;   // 40 точек/сек при ×1
-
-    player.timer = setInterval(playerTick, ms);
+    // тик 25 мс; за тик продвигаемся на speed точек —
+    // ×1 = 40 точек/сек, ×64 = 2560 точек/сек
+    player.timer = setInterval(playerTick, 25);
 }
 
 function playerReset() {
@@ -866,10 +866,6 @@ plSpeed.onclick = () => {
     player.speed = SPEEDS[(i + 1) % SPEEDS.length];
     plSpeed.textContent = "×" + player.speed;
 
-    if (player.playing) {
-        clearInterval(player.timer);
-        player.timer = setInterval(playerTick, 25 / player.speed);
-    }
 };
 
 plStop.onclick = playerReset;
@@ -1159,9 +1155,12 @@ document.addEventListener("keydown", e => {
     if (!fromApi) {
 
         index = [
-            "tracks/route1.gpx",
-            "tracks/route2.tcx",
-            "tracks/route3.kml"
+            "tracks/20260510Ходьба Эйфелева башня.gpx",
+            "tracks/20260524Ходьба Эйфелева башня.gpx",
+            "tracks/20260607Бег Эйфелева башня.tcx",
+            "tracks/20260621Бег Эйфелева башня.tcx",
+            "tracks/20260705Велосипед Эйфелева башня.gpx",
+            "tracks/20260719Велосипед Эйфелева башня.gpx"
         ].map(f => ({
 
             id: f.replace(/\.[^.]+$/, ""),
