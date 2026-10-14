@@ -681,7 +681,7 @@ function renderModes() {
 
     const statsBtn = document.createElement("button");
     statsBtn.textContent = "Статистика";
-
+    statsBtn.onclick = () => showStatistics();
     modesEl.appendChild(statsBtn);
 }
 
