@@ -17,7 +17,7 @@ git commit -m "v1.0.1" && git tag v1.0.1 && git push --tags
 ```bash
 python3 serve.py
 ```
-
+[Попробовать](https://michael-vt.github.io/Trecks/)
 Откроется на `http://localhost:8000/`. Сервер печатает и LAN-адрес
 (например `http://192.168.1.108:8000/`) — откройте его на телефоне
 или любом устройстве в той же Wi-Fi сети.
